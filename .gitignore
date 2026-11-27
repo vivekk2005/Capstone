@@ -1,0 +1,30 @@
+# Node / Next.js / Express
+node_modules/
+.next/
+dist/
+out/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Controlled private uploads (keep folder, ignore media files)
+apps/backend/uploads/*
+!apps/backend/uploads/.gitkeep
+
+# Logs & OS files
+*.log
+.DS_Store
+Thumbs.db
+
+# Model weights
+*.pt
+

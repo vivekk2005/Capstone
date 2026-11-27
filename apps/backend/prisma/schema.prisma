@@ -1,0 +1,542 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  INSTRUCTOR
+  FACILITY_MANAGER
+  STUDENT
+}
+
+enum StudentStatus {
+  ACTIVE
+  INACTIVE
+  GRADUATED
+}
+
+enum ClassroomStatus {
+  AVAILABLE
+  IN_USE
+  MAINTENANCE
+  INACTIVE
+}
+
+enum EquipmentType {
+  COMPUTER
+  MONITOR
+  PROJECTOR
+  FIRE_EXTINGUISHER
+  OTHER
+}
+
+enum SessionStatus {
+  SCHEDULED
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  LATE
+  ABSENT
+  EXCUSED
+}
+
+enum CheckInMethod {
+  QR_SCAN
+  MANUAL_OVERRIDE
+}
+
+enum CameraSourceType {
+  UPLOAD_POINT
+  WEBCAM_DEMO
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+}
+
+enum AiTaskType {
+  OCCUPANCY
+  EQUIPMENT_DETECTION
+  COMBINED
+}
+
+enum AiJobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum DetectionCategory {
+  PERSON_COUNT
+  OBJECT_DETECTION
+}
+
+enum CleanlinessRating {
+  GOOD
+  NEEDS_ATTENTION
+  POOR
+}
+
+enum BuildingCondition {
+  GOOD
+  MINOR_DAMAGE
+  NEEDS_REPAIR
+}
+
+enum EquipmentCondition {
+  ALL_PRESENT_WORKING
+  NEEDS_REVIEW
+  FAULT_REPORTED
+}
+
+enum InspectionStatus {
+  PASS
+  ACTION_REQUIRED
+  PENDING_REVIEW
+}
+
+enum FindingSourceType {
+  AI_ESTIMATE
+  MANUAL_INSPECTION
+}
+
+enum FindingReviewStatus {
+  PENDING_REVIEW
+  CONFIRMED
+  REJECTED
+  RECHECK_REQUESTED
+}
+
+enum SeverityLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum MaintenancePriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum MaintenanceStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum NotificationCategory {
+  AI_ESTIMATE_ALERT
+  HUMAN_CONFIRMED_ISSUE
+  OPERATIONAL_SYSTEM
+}
+
+enum NotificationSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  fullName     String   @map("full_name")
+  role         UserRole @default(STUDENT)
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  studentProfile         Student?
+  instructorProfile      Instructor?
+  passwordResetTokens    PasswordResetToken[]
+  createdQrTokens        QrToken[]            @relation("QrTokenCreator")
+  uploadedMedia          MediaUpload[]
+  requestedAiJobs        AiJob[]
+  conductedInspections   Inspection[]
+  reviewedFindings       InspectionFinding[]  @relation("FindingReviewer")
+  assignedTasks          MaintenanceTask[]    @relation("TaskAssignee")
+  createdTasks           MaintenanceTask[]    @relation("TaskCreator")
+  targetedNotifications  Notification[]       @relation("NotificationTarget")
+  resolvedNotifications  Notification[]       @relation("NotificationResolver")
+  auditLogs              AuditLog[]
+
+  @@index([role])
+  @@map("users")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+model Student {
+  id             String        @id @default(uuid())
+  userId         String        @unique @map("user_id")
+  studentCode    String        @unique @map("student_code")
+  phone          String?
+  courseBatch    String        @map("course_batch")
+  enrollmentDate DateTime      @default(now()) @map("enrollment_date")
+  status         StudentStatus @default(ACTIVE)
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  enrollments Enrollment[]
+  attendance  Attendance[]
+
+  @@index([courseBatch])
+  @@map("students")
+}
+
+model Instructor {
+  id             String   @id @default(uuid())
+  userId         String   @unique @map("user_id")
+  employeeCode   String   @unique @map("employee_code")
+  department     String?
+  phone          String?
+  specialization String?
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessions TrainingSession[]
+
+  @@map("instructors")
+}
+
+model Classroom {
+  id          String          @id @default(uuid())
+  roomCode    String          @unique @map("room_code")
+  name        String
+  building    String
+  maxCapacity Int             @map("max_capacity")
+  status      ClassroomStatus @default(AVAILABLE)
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+
+  equipment        Equipment[]
+  sessions         TrainingSession[]
+  cameraSources    CameraSource[]
+  mediaUploads     MediaUpload[]
+  detectionResults AiDetectionResult[]
+  inspections      Inspection[]
+  findings         InspectionFinding[]
+  maintenanceTasks MaintenanceTask[]
+  notifications    Notification[]
+
+  @@map("classrooms")
+}
+
+model Equipment {
+  id               String        @id @default(uuid())
+  classroomId      String        @map("classroom_id")
+  itemType         EquipmentType @map("item_type")
+  label            String
+  expectedQuantity Int           @map("expected_quantity")
+  notes            String?
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
+
+  classroom Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+
+  @@index([classroomId])
+  @@map("equipment")
+}
+
+model TrainingSession {
+  id           String        @id @default(uuid())
+  title        String
+  courseBatch  String        @map("course_batch")
+  classroomId  String        @map("classroom_id")
+  instructorId String        @map("instructor_id")
+  sessionDate  DateTime      @map("session_date")
+  startTime    DateTime      @map("start_time")
+  endTime      DateTime      @map("end_time")
+  status       SessionStatus @default(SCHEDULED)
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  classroom    Classroom     @relation(fields: [classroomId], references: [id], onDelete: Restrict)
+  instructor   Instructor    @relation(fields: [instructorId], references: [id], onDelete: Restrict)
+  enrollments  Enrollment[]
+  qrTokens     QrToken[]
+  attendance   Attendance[]
+  mediaUploads MediaUpload[]
+
+  @@index([sessionDate])
+  @@index([classroomId])
+  @@index([instructorId])
+  @@map("training_sessions")
+}
+
+model Enrollment {
+  id         String   @id @default(uuid())
+  sessionId  String   @map("session_id")
+  studentId  String   @map("student_id")
+  enrolledAt DateTime @default(now()) @map("enrolled_at")
+
+  session TrainingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student Student         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, studentId])
+  @@map("enrollments")
+}
+
+model QrToken {
+  id        String   @id @default(uuid())
+  sessionId String   @map("session_id")
+  tokenHash String   @unique @map("token_hash")
+  expiresAt DateTime @map("expires_at")
+  isRevoked Boolean  @default(false) @map("is_revoked")
+  createdBy String   @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  session    TrainingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  creator    User            @relation("QrTokenCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  attendance Attendance[]
+
+  @@index([sessionId, expiresAt])
+  @@map("qr_tokens")
+}
+
+model Attendance {
+  id        String           @id @default(uuid())
+  sessionId String           @map("session_id")
+  studentId String           @map("student_id")
+  qrTokenId String?          @map("qr_token_id")
+  status    AttendanceStatus @default(PRESENT)
+  markedAt  DateTime         @default(now()) @map("marked_at")
+  method    CheckInMethod    @default(QR_SCAN)
+  notes     String?
+
+  session TrainingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student Student         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  qrToken QrToken?        @relation(fields: [qrTokenId], references: [id], onDelete: SetNull)
+
+  @@unique([sessionId, studentId])
+  @@index([studentId])
+  @@map("attendance")
+}
+
+model CameraSource {
+  id          String           @id @default(uuid())
+  classroomId String           @map("classroom_id")
+  name        String
+  sourceType  CameraSourceType @default(UPLOAD_POINT) @map("source_type")
+  isActive    Boolean          @default(true) @map("is_active")
+  createdAt   DateTime         @default(now()) @map("created_at")
+
+  classroom    Classroom     @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  mediaUploads MediaUpload[]
+
+  @@map("camera_sources")
+}
+
+model MediaUpload {
+  id               String    @id @default(uuid())
+  classroomId      String    @map("classroom_id")
+  sessionId        String?   @map("session_id")
+  cameraSourceId   String?   @map("camera_source_id")
+  uploadedBy       String    @map("uploaded_by")
+  originalFilename String    @map("original_filename")
+  storagePath      String    @map("storage_path")
+  mimeType         String    @map("mime_type")
+  fileSizeBytes    BigInt    @map("file_size_bytes")
+  mediaType        MediaType @map("media_type")
+  retentionUntil   DateTime  @map("retention_until")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  classroom    Classroom        @relation(fields: [classroomId], references: [id], onDelete: Restrict)
+  session      TrainingSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  cameraSource CameraSource?    @relation(fields: [cameraSourceId], references: [id], onDelete: SetNull)
+  uploader     User             @relation(fields: [uploadedBy], references: [id], onDelete: Restrict)
+  aiJobs       AiJob[]
+  inspections  Inspection[]
+
+  @@index([classroomId])
+  @@map("media_uploads")
+}
+
+model AiJob {
+  id                  String      @id @default(uuid())
+  mediaId             String      @map("media_id")
+  taskType            AiTaskType  @map("task_type")
+  status              AiJobStatus @default(PENDING)
+  modelName           String?     @map("model_name")
+  modelVersion        String?     @map("model_version")
+  confidenceThreshold Float?      @map("confidence_threshold")
+  requestedBy         String      @map("requested_by")
+  startedAt           DateTime?   @map("started_at")
+  completedAt         DateTime?   @map("completed_at")
+  errorMessage        String?     @map("error_message")
+  createdAt           DateTime    @default(now()) @map("created_at")
+
+  media            MediaUpload         @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+  requester        User                @relation(fields: [requestedBy], references: [id], onDelete: Restrict)
+  detectionResults AiDetectionResult[]
+
+  @@index([mediaId])
+  @@index([status])
+  @@map("ai_jobs")
+}
+
+model AiDetectionResult {
+  id                String            @id @default(uuid())
+  aiJobId           String            @map("ai_job_id")
+  classroomId       String            @map("classroom_id")
+  detectionCategory DetectionCategory @map("detection_category")
+  detectedClass     String            @map("detected_class")
+  estimatedCount    Int               @map("estimated_count")
+  confidence        Float?
+  bboxJson          Json?             @map("bbox_json")
+  frameIndex        Int?              @map("frame_index")
+  capacityStatus    String?           @map("capacity_status")
+  createdAt         DateTime          @default(now()) @map("created_at")
+
+  aiJob     AiJob               @relation(fields: [aiJobId], references: [id], onDelete: Cascade)
+  classroom Classroom           @relation(fields: [classroomId], references: [id], onDelete: Restrict)
+  findings  InspectionFinding[]
+
+  @@index([aiJobId])
+  @@index([classroomId])
+  @@map("ai_detection_results")
+}
+
+model Inspection {
+  id                 String             @id @default(uuid())
+  classroomId        String             @map("classroom_id")
+  inspectorId        String             @map("inspector_id")
+  inspectionDate     DateTime           @map("inspection_date")
+  cleanlinessRating  CleanlinessRating  @map("cleanliness_rating")
+  buildingCondition  BuildingCondition  @map("building_condition")
+  equipmentCondition EquipmentCondition @map("equipment_condition")
+  overallStatus      InspectionStatus   @default(PENDING_REVIEW) @map("overall_status")
+  notes              String?
+  attachmentMediaId  String?            @map("attachment_media_id")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  classroom       Classroom           @relation(fields: [classroomId], references: [id], onDelete: Restrict)
+  inspector       User                @relation(fields: [inspectorId], references: [id], onDelete: Restrict)
+  attachmentMedia MediaUpload?        @relation(fields: [attachmentMediaId], references: [id], onDelete: SetNull)
+  findings        InspectionFinding[]
+
+  @@index([classroomId])
+  @@index([inspectionDate])
+  @@map("inspections")
+}
+
+model InspectionFinding {
+  id            String              @id @default(uuid())
+  inspectionId  String?             @map("inspection_id")
+  classroomId   String              @map("classroom_id")
+  aiDetectionId String?             @map("ai_detection_id")
+  sourceType    FindingSourceType   @map("source_type")
+  reviewStatus  FindingReviewStatus @default(PENDING_REVIEW) @map("review_status")
+  severity      SeverityLevel       @default(MEDIUM)
+  summary       String
+  reviewerId    String?             @map("reviewer_id")
+  reviewedAt    DateTime?           @map("reviewed_at")
+  reviewNotes   String?             @map("review_notes")
+  createdAt     DateTime            @default(now()) @map("created_at")
+  updatedAt     DateTime            @updatedAt @map("updated_at")
+
+  inspection       Inspection?        @relation(fields: [inspectionId], references: [id], onDelete: SetNull)
+  classroom        Classroom          @relation(fields: [classroomId], references: [id], onDelete: Restrict)
+  aiDetection      AiDetectionResult? @relation(fields: [aiDetectionId], references: [id], onDelete: SetNull)
+  reviewer         User?              @relation("FindingReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+  maintenanceTasks MaintenanceTask[]
+
+  @@index([classroomId])
+  @@index([reviewStatus])
+  @@map("inspection_findings")
+}
+
+model MaintenanceTask {
+  id          String              @id @default(uuid())
+  classroomId String              @map("classroom_id")
+  findingId   String?             @map("finding_id")
+  title       String
+  description String
+  priority    MaintenancePriority @default(MEDIUM)
+  status      MaintenanceStatus   @default(PENDING)
+  assignedTo  String?             @map("assigned_to")
+  createdBy   String              @map("created_by")
+  dueDate     DateTime?           @map("due_date")
+  completedAt DateTime?           @map("completed_at")
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+
+  classroom Classroom          @relation(fields: [classroomId], references: [id], onDelete: Restrict)
+  finding   InspectionFinding? @relation(fields: [findingId], references: [id], onDelete: SetNull)
+  assignee  User?              @relation("TaskAssignee", fields: [assignedTo], references: [id], onDelete: SetNull)
+  creator   User               @relation("TaskCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+
+  @@index([classroomId])
+  @@index([status])
+  @@map("maintenance_tasks")
+}
+
+model Notification {
+  id             String               @id @default(uuid())
+  targetUserId   String?              @map("target_user_id")
+  targetRole     UserRole?            @map("target_role")
+  classroomId    String?              @map("classroom_id")
+  sourceCategory NotificationCategory @map("source_category")
+  title          String
+  message        String
+  severity       NotificationSeverity @default(INFO)
+  isRead         Boolean              @default(false) @map("is_read")
+  isResolved     Boolean              @default(false) @map("is_resolved")
+  resolvedBy     String?              @map("resolved_by")
+  resolvedAt     DateTime?            @map("resolved_at")
+  createdAt      DateTime             @default(now()) @map("created_at")
+
+  targetUser User?      @relation("NotificationTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+  classroom  Classroom? @relation(fields: [classroomId], references: [id], onDelete: SetNull)
+  resolver   User?      @relation("NotificationResolver", fields: [resolvedBy], references: [id], onDelete: SetNull)
+
+  @@index([targetUserId])
+  @@index([isResolved])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  actorUserId String?  @map("actor_user_id")
+  action      String
+  entityType  String   @map("entity_type")
+  entityId    String?  @map("entity_id")
+  detailsJson Json?    @map("details_json")
+  ipAddress   String?  @map("ip_address")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  actor User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([actorUserId])
+  @@index([entityType])
+  @@map("audit_logs")
+}
